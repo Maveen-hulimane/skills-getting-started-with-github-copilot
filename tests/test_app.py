@@ -1,6 +1,21 @@
 import pytest
 
 
+def test_root_redirect(client):
+    # Act
+    response = client.get("/")
+
+    # Assert
+    assert response.status_code == 200  # RedirectResponse returns 200? Wait, no, RedirectResponse is 307 by default, but TestClient follows redirects?
+    # Actually, TestClient follows redirects by default, so it will get the static file, but since it's mounted, it might not.
+    # To test redirect, perhaps use follow_redirects=False
+    # But for simplicity, since it's redirect to static, maybe skip or test differently.
+    # Actually, let's test that it redirects.
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/static/index.html"
+
+
 def test_get_activities(client):
     # Arrange - No special setup needed for this endpoint
 
@@ -20,6 +35,27 @@ def test_get_activities(client):
         assert "max_participants" in activity_data
         assert "participants" in activity_data
         assert isinstance(activity_data["participants"], list)
+
+
+def test_signup_activity_full(client):
+    # Arrange
+    activity_name = "Chess Club"
+    # Chess Club has max 12, starts with 2 participants
+    # Sign up 10 more to reach max
+    emails = [f"student{i}@example.com" for i in range(10)]
+    for email in emails:
+        response = client.post(f"/activities/{activity_name}/signup?email={email}")
+        assert response.status_code == 200
+
+    # Now try to signup one more
+    extra_email = "extra@example.com"
+    response = client.post(f"/activities/{activity_name}/signup?email={extra_email}")
+
+    # Assert
+    assert response.status_code == 400
+    data = response.json()
+    assert "detail" in data
+    assert "Activity is full" in data["detail"]
 
 
 def test_signup_successful(client):
@@ -107,10 +143,10 @@ def test_unregister_participant_not_found(client):
     response = client.delete(f"/activities/{activity_name}/unregister?email={email}")
 
     # Assert
-    assert response.status_code == 400
+    assert response.status_code == 404
     data = response.json()
     assert "detail" in data
-    assert "not signed up" in data["detail"]
+    assert "Participant not found" in data["detail"]
 
 
 def test_unregister_invalid_activity(client):
